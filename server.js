@@ -45,6 +45,22 @@ const db = new sqlite3.Database('./db/blog.sqlite', (err) => {
     });
 });
 
+// --- SECURITY MIDDLEWARE ---
+// Basic Authentication for Admin Routes
+const requireAuth = (req, res, next) => {
+    const b64auth = (req.headers.authorization || '').split(' ')[1] || '';
+    const [login, password] = Buffer.from(b64auth, 'base64').toString().split(':');
+
+    // Hard-coded credentials: admin / password123
+    if (login === 'admin' && password === 'password123') {
+        return next();
+    }
+
+    // If unauthorized, prompt the browser's native login modal
+    res.set('WWW-Authenticate', 'Basic realm="TechByte Admin"');
+    res.status(401).send('Authentication required. Please log in.');
+};
+
 // --- ROUTES ---
 
 // 1. Home Page: Fetch all posts and render index.ejs
@@ -57,13 +73,13 @@ app.get('/', (req, res) => {
     });
 });
 
-// 2. Admin Page: Show the form
-app.get('/admin', (req, res) => {
+// 2. Admin Page: Show the form (PROTECTED)
+app.get('/admin', requireAuth, (req, res) => {
     res.render('admin');
 });
 
-// 3. Admin Page: Process the form submission and save to database
-app.post('/admin', (req, res) => {
+// 3. Admin Page: Process the form submission and save to database (PROTECTED)
+app.post('/admin', requireAuth, (req, res) => {
     const { title, content } = req.body;
     db.run(`INSERT INTO Posts (title, content) VALUES (?, ?)`, [title, content], (err) => {
         if (err) {
@@ -112,6 +128,16 @@ app.post('/api/comments', (req, res) => {
                 comment_text: comment_text
             }
         });
+    });
+});
+
+// 6. Delete Route (PROTECTED)
+app.post('/post/:id/delete', requireAuth, (req, res) => {
+    const postId = req.params.id;
+    // Delete the post and its associated comments
+    db.run("DELETE FROM Posts WHERE post_id = ?", [postId], (err) => {
+        db.run("DELETE FROM Comments WHERE post_id = ?", [postId]); 
+        res.redirect('/');
     });
 });
 
